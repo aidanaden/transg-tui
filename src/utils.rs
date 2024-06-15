@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
+use crate::icons;
 use chrono::{DateTime, NaiveDateTime, Utc};
 use tui_tree_widget::TreeItem;
-use crate::icons;
-
 
 //use std::fmt;
 use crate::transmission::{self, TorrentStatus};
@@ -18,11 +17,10 @@ pub struct Node {
     pub children: Vec<Node>,
 }
 
-
 #[derive(Debug, Clone)]
 pub struct FileIdx {
     pub idx: usize,
-    pub children: Vec<FileIdx>
+    pub children: Vec<FileIdx>,
 }
 
 const DEC_TB: i64 = 1000 * 1000 * 1000 * 1000;
@@ -214,9 +212,9 @@ pub fn do_build_file_tree<'a>(
     level: usize,
     xs: Vec<(u64, u64, Vec<u64>)>,
     strings: &HashMap<u64, &str>,
-    add_icons: bool
-) -> Vec<TreeItem<'a>> {
-    let mut ns: Vec<TreeItem> = vec![];
+    add_icons: bool,
+) -> Vec<TreeItem<'a, usize>> {
+    let mut ns: Vec<TreeItem<usize>> = vec![];
 
     let mut parents: Vec<u64> = xs.iter().filter(|x| x.2.len() > level).map(|x| x.2[level]).collect();
     parents.sort();
@@ -235,39 +233,30 @@ pub fn do_build_file_tree<'a>(
         } else {
             vec![]
         };
-        let name = strings.get(&name).expect("should be name");
+        let str_name = strings.get(&name).expect("should be name");
         let text = if add_icons {
-        let icon = if !cs.is_empty() { icons::DEFAULT_DIR } else { 
-            match name.rsplit_once('.') {
-                        Some((_, ext)) => icons::FILE_NODE_EXTENSIONS.get(ext).unwrap_or(&icons::DEFAULT_FILE),
-                        None => icons::DEFAULT_FILE,
-            }
-        };
-            format!(
-                "{} {} - {}",
-                icon,
-                name,
-                crate::utils::format_size(size as i64)
-            ) 
+            let icon = if !cs.is_empty() {
+                icons::DEFAULT_DIR
+            } else {
+                match str_name.rsplit_once('.') {
+                    Some((_, ext)) => icons::FILE_NODE_EXTENSIONS.get(ext).unwrap_or(&icons::DEFAULT_FILE),
+                    None => icons::DEFAULT_FILE,
+                }
+            };
+            format!("{} {} - {}", icon, str_name, crate::utils::format_size(size as i64))
         } else {
-            format!(
-                "{} - {}",
-                name,
-                crate::utils::format_size(size as i64)
-            ) 
-
+            format!("{} - {}", str_name, crate::utils::format_size(size as i64))
         };
-        ns.push(TreeItem::new(
-                text,
-            //   path,
-               //  size,
-               //  downloaded,
-            cs,
-        ));
+        match TreeItem::new(name as usize, text, cs) {
+            Result::Ok(tree) => ns.push(tree),
+            _ => continue,
+        }
     }
-    ns
+    return ns;
 }
-pub fn build_file_tree<'a>(files: &[transmission::File], add_icons: bool) -> Vec<TreeItem<'a>> {
+
+// build file tree based on a vector of transmission files (for viewing)
+pub fn build_file_tree<'a>(files: &[transmission::File], add_icons: bool) -> Vec<TreeItem<'a, usize>> {
     let mut id: u64 = 0;
     let mut strings: HashMap<&str, u64> = HashMap::new();
     let mut xs: Vec<(u64, u64, Vec<u64>)> = files
@@ -299,14 +288,15 @@ pub fn build_file_tree<'a>(files: &[transmission::File], add_icons: bool) -> Vec
 // FIXME: rewrite this shit.. maybe last_parent, and cound '/'
 // shit, need to take into account parents?
 // wait, there're no parents! only list of files...
-pub fn do_build_file_tree_index(
-    level: usize,
-    xs: Vec<(usize,  Vec<u64>)>
-) -> Vec<FileIdx> {
+pub fn do_build_file_tree_index(level: usize, xs: Vec<(usize, Vec<u64>)>) -> Vec<FileIdx> {
     let mut ns: Vec<FileIdx> = vec![];
     //println!("level: {:?}, xs: {:?}", level, xs);
 
-    let mut parents: Vec<(usize, u64)> = xs.iter().filter(|x| x.1.len() > level).map(|x| (x.0, x.1[level])).collect();
+    let mut parents: Vec<(usize, u64)> = xs
+        .iter()
+        .filter(|x| x.1.len() > level)
+        .map(|x| (x.0, x.1[level]))
+        .collect();
     parents.sort_by_key(|x| x.1);
     parents.dedup_by_key(|x| x.1);
 
@@ -322,16 +312,14 @@ pub fn do_build_file_tree_index(
         } else {
             vec![]
         };
-        ns.push(FileIdx{
-            idx,
-            children:cs,
-        });
+        ns.push(FileIdx { idx, children: cs });
     }
     ns
 }
 pub fn build_file_tree_index(files: &[transmission::File]) -> Vec<FileIdx> {
     let mut id: u64 = 0;
     let mut strings: HashMap<&str, u64> = HashMap::new();
+    // generate array of  vec![idx + 1 of each file in file path]
     let mut xs: Vec<(usize, Vec<u64>)> = files
         .iter()
         .enumerate()
@@ -361,17 +349,17 @@ pub fn find_file_position(path: &[usize], tree: &[FileIdx]) -> Option<usize> {
     if path.is_empty() || tree.is_empty() {
         None
     } else {
-       let n = path[0];
-       if n < tree.len() {
-          let node = &tree[n];
-          if path.len() == 1 {
-              Some(node.idx)
-          } else {
-              find_file_position(&path[1..], &node.children)
-          }
-       } else {
-           None
-       }
+        let n = path[0];
+        if n < tree.len() {
+            let node = &tree[n];
+            if path.len() == 1 {
+                Some(node.idx)
+            } else {
+                find_file_position(&path[1..], &node.children)
+            }
+        } else {
+            None
+        }
     }
 }
 //pub fn find_file_position(id:&[usize], files: &[transmission::File]) -> Option<usize> {

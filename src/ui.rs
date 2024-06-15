@@ -1,11 +1,11 @@
-use crate::config::{Action, Config, Connection, TrafficMonitorOptions, Styles};
+use crate::config::{Action, Config, Connection, Styles, TrafficMonitorOptions};
 use crate::torrent_stats::TorrentGroupStats;
 use crate::transmission::{TorrentDetails, TorrentInfo};
-use tui::{
-    backend::Backend,
+use ratatui::text::Line;
+use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::Modifier,
-    text::{Span, Spans},
+    text::Span,
     widgets::{
         Block, BorderType, Borders, Cell, Clear, List, ListItem, ListState, Paragraph, Row, Sparkline, Table, Wrap,
     },
@@ -13,14 +13,14 @@ use tui::{
 };
 
 use crate::utils::{
-    format_download_speed, format_eta, format_percent_done, format_size, format_status, format_time, process_folder,
-    utf8_split, find_file_position,
+    find_file_position, format_download_speed, format_eta, format_percent_done, format_size, format_status,
+    format_time, process_folder, utf8_split,
 };
 use tui_tree_widget::{Tree, TreeItem};
 
 use crate::{App, Transition};
 
-pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
+pub fn ui(frame: &mut Frame, app: &mut App) {
     let size = frame.size();
 
     // FIXME: hide bandwith monitor
@@ -41,7 +41,7 @@ pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
         )
         .split(size);
 
-    let status = Paragraph::new(Spans::from(vec![
+    let status = Paragraph::new(Line::from(vec![
         //Span::styled(format!("W: {}, H: {} ", frame.size().width, frame.size().height),
         //app.styles.text),
         Span::styled(
@@ -74,7 +74,7 @@ pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
     );
 
     if app.transition == Transition::Search || app.transition.is_find() {
-        let search = Paragraph::new(Spans::from(vec![Span::styled(
+        let search = Paragraph::new(Line::from(vec![Span::styled(
             format!("Search: {}▋", app.input),
             app.styles.emphasis,
         )]))
@@ -117,7 +117,8 @@ pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
                 let area = centered_rect(90, 90, pets_chunks[0]);
                 frame.render_widget(details_frame, area);
 
-                let block = draw_tree(app.tree_items.clone(), &app.styles);
+                let tree_items = app.tree_items.clone();
+                let block = draw_tree(&tree_items, &app.styles);
                 frame.render_stateful_widget(block, pets_chunks[1], &mut app.tree_state);
             }
         }
@@ -142,9 +143,10 @@ pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
                 &app.folder_mapping,
                 app.num_active,
                 &app.config.connections[app.connection_idx],
-                &app.styles
+                &app.styles,
             );
-            let main_table = render_main_table(&app.left_filter_state, &app.groups, &app.filtered_torrents, &app.styles);
+            let main_table =
+                render_main_table(&app.left_filter_state, &app.groups, &app.filtered_torrents, &app.styles);
 
             if size.width > 120 {
                 frame.render_stateful_widget(filters, pets_chunks[0], &mut app.left_filter_state);
@@ -211,15 +213,18 @@ pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
                 || "".to_string(),
                 |d| {
                     if let Some(file_idx) = find_file_position(&app.tree_state.selected(), &app.tree_index) {
-                        d.files.get(file_idx).map(|f| {
-                    let num_chars = f.name.chars().count();
-                    if num_chars > 25 {
-                        let skip = num_chars - 25;
-                        "\n ...".to_owned() + &f.name.chars().skip(skip).collect::<String>()
-                    } else {
-                        "\n ...".to_owned() + &f.name
-                    }
-                        }).unwrap_or_else(|| "".to_string())
+                        d.files
+                            .get(file_idx)
+                            .map(|f| {
+                                let num_chars = f.name.chars().count();
+                                if num_chars > 25 {
+                                    let skip = num_chars - 25;
+                                    "\n ...".to_owned() + &f.name.chars().skip(skip).collect::<String>()
+                                } else {
+                                    "\n ...".to_owned() + &f.name
+                                }
+                            })
+                            .unwrap_or_else(|| "".to_string())
                     } else {
                         "".to_string()
                     }
@@ -257,7 +262,7 @@ pub fn ui<B: Backend>(frame: &mut Frame<B>, app: &mut App) {
                     &x.name,
                     &app.folder_mapping,
                     &app.config.connections[app.connection_idx],
-                    &app.styles
+                    &app.styles,
                 );
             }
         }
@@ -281,7 +286,7 @@ fn render_main_table<'a>(
     _filter_state: &ListState,
     _groups: &TorrentGroupStats,
     torrents: &[TorrentInfo],
-    styles: &Styles
+    styles: &Styles,
 ) -> Table<'a> {
     let rows: Vec<_> = torrents
         .iter()
@@ -298,10 +303,19 @@ fn render_main_table<'a>(
             ])
         })
         .collect();
-    let pet_detail = Table::new(rows)
-        .highlight_style(
-            styles.highlight
-        )
+    let widths = [
+        Constraint::Min(3),
+        Constraint::Percentage(40),
+        Constraint::Percentage(5),
+        Constraint::Percentage(10),
+        Constraint::Percentage(10),
+        Constraint::Percentage(10),
+        Constraint::Percentage(10),
+        Constraint::Percentage(10),
+        Constraint::Percentage(10),
+    ];
+    let pet_detail = Table::new(rows, widths)
+        .highlight_style(styles.highlight)
         .header(Row::new(vec![
             Cell::from(Span::styled(" ", styles.emphasis)),
             Cell::from(Span::styled("Name", styles.emphasis)),
@@ -318,18 +332,7 @@ fn render_main_table<'a>(
                 .style(styles.text)
                 .title("Darlings")
                 .border_type(BorderType::Plain),
-        )
-        .widths(&[
-            Constraint::Min(3),
-            Constraint::Percentage(40),
-            Constraint::Percentage(5),
-            Constraint::Percentage(10),
-            Constraint::Percentage(10),
-            Constraint::Percentage(10),
-            Constraint::Percentage(10),
-            Constraint::Percentage(10),
-            Constraint::Percentage(10),
-        ]);
+        );
 
     pet_detail
 }
@@ -370,18 +373,14 @@ fn render_filters<'a>(
                 let (_, c, i) = mapping.iter().find(|y| &y.0 == f.0).expect("exist");
                 let (first, second) = utf8_split(&name, *i);
                 let second: String = second.chars().skip(1).collect();
-                ListItem::new(Spans::from(vec![
+                ListItem::new(Line::from(vec![
                     Span::raw(" "),
                     Span::styled(first, styles.text),
-                    Span::styled(
-                        c.to_string(),
-                        styles.emphasis
-                            .add_modifier(Modifier::UNDERLINED)
-                    ),
+                    Span::styled(c.to_string(), styles.emphasis.add_modifier(Modifier::UNDERLINED)),
                     Span::styled(format!("{}: {}", second, f.1), styles.text),
                 ]))
             } else {
-                ListItem::new(Spans::from(vec![Span::styled(
+                ListItem::new(Line::from(vec![Span::styled(
                     format!(" {}: {}", name, f.1),
                     styles.text,
                 )]))
@@ -396,21 +395,14 @@ fn render_filters<'a>(
                 let (first, second) = utf8_split(&x.0, x.2);
                 let second: String = second.chars().skip(1).collect();
 
-                ListItem::new(Spans::from(vec![
+                ListItem::new(Line::from(vec![
                     Span::raw(" "),
                     Span::styled(first, styles.text),
-                    Span::styled(
-                        x.1.to_string(),
-                        styles.emphasis
-                            .add_modifier(Modifier::UNDERLINED)
-                    ),
+                    Span::styled(x.1.to_string(), styles.emphasis.add_modifier(Modifier::UNDERLINED)),
                     Span::styled(second, styles.text),
                 ]))
             } else {
-                ListItem::new(Spans::from(vec![
-                    Span::raw(" "),
-                    Span::styled(x.0.clone(), styles.text),
-                ]))
+                ListItem::new(Line::from(vec![Span::raw(" "), Span::styled(x.0.clone(), styles.text)]))
             }
         })
         .collect();
@@ -418,10 +410,9 @@ fn render_filters<'a>(
     items.push(ListItem::new("────────────────────────".to_string()));
     items.append(&mut folder_items);
 
-    let list = List::new(items).block(filters).highlight_style(
-        styles.highlight
-            .add_modifier(Modifier::BOLD),
-    );
+    let list = List::new(items)
+        .block(filters)
+        .highlight_style(styles.highlight.add_modifier(Modifier::BOLD));
 
     list
 }
@@ -456,17 +447,13 @@ fn action_menu<'a>(actions: &'a [Action], styles: &Styles) -> List<'a> {
             } else {
                 "    ".to_owned() + x.1
             };
-            ListItem::new(Spans::from(vec![
+            ListItem::new(Line::from(vec![
                 if x.0.is_empty() {
                     Span::raw("─")
                 } else {
                     Span::raw(" ")
                 },
-                Span::styled(
-                    x.0,
-                    styles.emphasis
-                        .add_modifier(Modifier::UNDERLINED)
-                ),
+                Span::styled(x.0, styles.emphasis.add_modifier(Modifier::UNDERLINED)),
                 Span::styled(desc, styles.text),
             ]))
         })
@@ -498,17 +485,13 @@ fn file_action_menu<'a>(actions: &'a [Action], styles: &'a Styles) -> List<'a> {
             } else {
                 "    ".to_owned() + x.1
             };
-            ListItem::new(Spans::from(vec![
+            ListItem::new(Line::from(vec![
                 if x.0.is_empty() {
                     Span::raw("─")
                 } else {
                     Span::raw(" ")
                 },
-                Span::styled(
-                    x.0,
-                    styles.emphasis
-                        .add_modifier(Modifier::UNDERLINED)
-                ),
+                Span::styled(x.0, styles.emphasis.add_modifier(Modifier::UNDERLINED)),
                 Span::styled(desc, styles.text),
             ]))
         })
@@ -518,13 +501,13 @@ fn file_action_menu<'a>(actions: &'a [Action], styles: &'a Styles) -> List<'a> {
 
 fn error_dialog<'a>(msg: &'a str, details: &'a str, styles: &Styles) -> Paragraph<'a> {
     let mut lines = vec![
-        Spans::from(vec![Span::raw("")]),
-        Spans::from(vec![Span::styled("Bloody hell!", styles.error_text)]),
-        Spans::from(vec![Span::raw("")]),
-        Spans::from(vec![Span::styled(msg, styles.error_text)]),
+        Line::from(vec![Span::raw("")]),
+        Line::from(vec![Span::styled("Bloody hell!", styles.error_text)]),
+        Line::from(vec![Span::raw("")]),
+        Line::from(vec![Span::styled(msg, styles.error_text)]),
     ];
     for l in details.split('\n') {
-        lines.push(Spans::from(vec![Span::styled(l, styles.blend_in)]));
+        lines.push(Line::from(vec![Span::styled(l, styles.blend_in)]));
     }
     let message = Paragraph::new(lines).wrap(Wrap { trim: false }).block(
         Block::default()
@@ -536,24 +519,23 @@ fn error_dialog<'a>(msg: &'a str, details: &'a str, styles: &Styles) -> Paragrap
 }
 
 fn choose_sort_dialog(styles: &Styles) -> Paragraph {
-    let key_style = styles.emphasis
-        .add_modifier(Modifier::UNDERLINED);
+    let key_style = styles.emphasis.add_modifier(Modifier::UNDERLINED);
     let lines = vec![
-        Spans::from(vec![Span::raw("")]),
-        Spans::from(vec![Span::styled(" Choose sort function:", styles.text)]),
-        Spans::from(vec![Span::raw("")]),
-        Spans::from(vec![
+        Line::from(vec![Span::raw("")]),
+        Line::from(vec![Span::styled(" Choose sort function:", styles.text)]),
+        Line::from(vec![Span::raw("")]),
+        Line::from(vec![
             Span::raw(" By "),
             Span::styled("d", key_style),
             Span::raw("ate added (default)"),
         ]),
-        Spans::from(vec![
+        Line::from(vec![
             Span::raw(" By "),
             Span::styled("u", key_style),
             Span::raw("ploaded total"),
         ]),
-        Spans::from(vec![Span::raw(" By "), Span::styled("s", key_style), Span::raw("ize")]),
-        Spans::from(vec![Span::raw(" By "), Span::styled("r", key_style), Span::raw("atio")]),
+        Line::from(vec![Span::raw(" By "), Span::styled("s", key_style), Span::raw("ize")]),
+        Line::from(vec![Span::raw(" By "), Span::styled("r", key_style), Span::raw("atio")]),
     ];
     let message = Paragraph::new(lines).block(
         Block::default()
@@ -565,15 +547,14 @@ fn choose_sort_dialog(styles: &Styles) -> Paragraph {
 }
 
 fn choose_connection<'a>(config: &Config, styles: &'a Styles) -> Paragraph<'a> {
-    let key_style = styles.emphasis
-        .add_modifier(Modifier::UNDERLINED);
+    let key_style = styles.emphasis.add_modifier(Modifier::UNDERLINED);
     let mut lines = vec![
-        Spans::from(vec![Span::raw("")]),
-        Spans::from(vec![Span::styled(" Choose connection:", styles.text)]),
-        Spans::from(vec![Span::raw("")]),
+        Line::from(vec![Span::raw("")]),
+        Line::from(vec![Span::styled(" Choose connection:", styles.text)]),
+        Line::from(vec![Span::raw("")]),
     ];
     for (i, x) in config.connections.iter().enumerate() {
-        lines.push(Spans::from(vec![
+        lines.push(Line::from(vec![
             Span::raw(" "),
             Span::styled((i + 1).to_string(), key_style),
             Span::raw("   "),
@@ -591,7 +572,7 @@ fn choose_connection<'a>(config: &Config, styles: &'a Styles) -> Paragraph<'a> {
 
 fn delete_confirmation_dialog<'a>(with_data: bool, name: &'a str, styles: &Styles) -> Paragraph<'a> {
     let block = Block::default().title("Confirm").borders(Borders::ALL);
-    let message = Paragraph::new(Spans::from(vec![
+    let message = Paragraph::new(Line::from(vec![
         Span::styled("Sure to remove '", styles.text),
         Span::styled(name, styles.blend_in),
         Span::styled("'", styles.text),
@@ -606,16 +587,15 @@ fn delete_confirmation_dialog<'a>(with_data: bool, name: &'a str, styles: &Style
     .block(block);
     message
 }
-fn move_dialog<B: Backend>(
-    frame: &mut Frame<B>,
+fn move_dialog(
+    frame: &mut Frame,
     name: &str,
     folders: &[(String, char, usize)],
     connection: &Connection,
-    styles: &Styles
+    styles: &Styles,
 ) {
     let size = frame.size();
-    let title = Paragraph::new(Spans::from(vec![Span::styled(name, styles.blend_in)]))
-        .wrap(Wrap { trim: false });
+    let title = Paragraph::new(Line::from(vec![Span::styled(name, styles.blend_in)])).wrap(Wrap { trim: false });
 
     let items: Vec<_> = folders
         .iter()
@@ -624,13 +604,9 @@ fn move_dialog<B: Backend>(
             let (first, second) = utf8_split(&name, x.2);
             let second: String = second.chars().skip(1).collect();
 
-            ListItem::new(Spans::from(vec![
+            ListItem::new(Line::from(vec![
                 Span::styled(first, styles.text),
-                Span::styled(
-                    x.1.to_string(),
-                    styles.emphasis
-                        .add_modifier(Modifier::UNDERLINED)
-                ),
+                Span::styled(x.1.to_string(), styles.emphasis.add_modifier(Modifier::UNDERLINED)),
                 Span::styled(second, styles.text),
             ]))
         })
@@ -655,45 +631,42 @@ fn help_dialog<'a>(styles: &Styles) -> Paragraph<'a> {
     let bold = styles.bold;
     let gray = styles.blend_in;
     Paragraph::new(vec![
-        Spans::from(vec![Span::raw("")]),
-        Spans::from(vec![Span::styled(
-            "Transgression TUI",
-            styles.details_emphasis,
-        )]),
-        Spans::from(""),
-        Spans::from(vec![Span::styled("↑ / k    ", bold), Span::styled("Prev item", gray)]),
-        Spans::from(vec![Span::styled("↓ / j    ", bold), Span::styled("Next item", gray)]),
-        Spans::from(vec![Span::styled("f        ", bold), Span::styled("Filter menu", gray)]),
-        Spans::from(vec![Span::styled("S        ", bold), Span::styled("Sort menu", gray)]),
-        Spans::from(vec![Span::styled("space    ", bold), Span::styled("Action menu", gray)]),
-        Spans::from(vec![
+        Line::from(vec![Span::raw("")]),
+        Line::from(vec![Span::styled("Transgression TUI", styles.details_emphasis)]),
+        Line::from(""),
+        Line::from(vec![Span::styled("↑ / k    ", bold), Span::styled("Prev item", gray)]),
+        Line::from(vec![Span::styled("↓ / j    ", bold), Span::styled("Next item", gray)]),
+        Line::from(vec![Span::styled("f        ", bold), Span::styled("Filter menu", gray)]),
+        Line::from(vec![Span::styled("S        ", bold), Span::styled("Sort menu", gray)]),
+        Line::from(vec![Span::styled("space    ", bold), Span::styled("Action menu", gray)]),
+        Line::from(vec![
             Span::styled("d        ", bold),
             Span::styled("Details screen", gray),
         ]),
-        Spans::from(vec![
+        Line::from(vec![
             Span::styled("/        ", bold),
             Span::styled("Find next item in list", gray),
         ]),
-        Spans::from(vec![
+        Line::from(vec![
             Span::styled("?        ", bold),
             Span::styled("Find prev item in list", gray),
         ]),
-        Spans::from(vec![
+        Line::from(vec![
             Span::styled("s        ", bold),
             Span::styled("Search across all torrents", gray),
         ]),
-        Spans::from(vec![
+        Line::from(vec![
             Span::styled("c        ", bold),
             Span::styled("Connection menu", gray),
         ]),
-        Spans::from(vec![Span::styled("F1       ", bold), Span::styled("Help screen", gray)]),
-        Spans::from(vec![
+        Line::from(vec![Span::styled("F1       ", bold), Span::styled("Help screen", gray)]),
+        Line::from(vec![
             Span::styled("Esc      ", bold),
             Span::styled("Exit from all menus", gray),
         ]),
-        Spans::from(vec![Span::styled("q        ", bold), Span::styled("Quit", gray)]),
-        Spans::from(""),
-        Spans::from(vec![Span::raw("Configuration file: ~/.config/transg/transg-tui.toml")]),
+        Line::from(vec![Span::styled("q        ", bold), Span::styled("Quit", gray)]),
+        Line::from(""),
+        Line::from(vec![Span::raw("Configuration file: ~/.config/transg/transg-tui.toml")]),
     ])
 }
 
@@ -701,7 +674,8 @@ fn extract_domain_name(s: &str) -> String {
     s.chars().take_while(|x| x != &'/').collect()
 }
 fn format_tracker_url(s: &str) -> String {
-    s.strip_prefix("https://").map(extract_domain_name)
+    s.strip_prefix("https://")
+        .map(extract_domain_name)
         .or_else(|| s.strip_prefix("http://").map(extract_domain_name))
         .or_else(|| s.strip_prefix("udp://").map(extract_domain_name))
         .unwrap_or_else(|| "".to_string())
@@ -720,7 +694,13 @@ fn render_details<'a>(details: &'a TorrentDetails, styles: &Styles) -> Table<'a>
         ]),
         Row::new(vec![
             Cell::from(Span::styled("First tracker:", key_style)),
-            Cell::from(Span::styled(details.trackers.first().map_or(String::from(""), |t| format_tracker_url(&t.announce)), value_style)),
+            Cell::from(Span::styled(
+                details
+                    .trackers
+                    .first()
+                    .map_or(String::from(""), |t| format_tracker_url(&t.announce)),
+                value_style,
+            )),
         ]),
         Row::new(vec![
             Cell::from(Span::styled("Completed At:", key_style)),
@@ -747,18 +727,17 @@ fn render_details<'a>(details: &'a TorrentDetails, styles: &Styles) -> Table<'a>
             Cell::from(Span::styled(details.error_string.clone(), value_style)),
         ]),
     ];
-    Table::new(rows)
+    let widths = [Constraint::Length(17)];
+    Table::new(rows, widths)
         .widths(&[Constraint::Length(17), Constraint::Length(60)])
         .column_spacing(1)
 }
 
-fn draw_tree<'a>(items: Vec<TreeItem<'a>>, styles: &Styles) -> Tree<'a> {
+fn draw_tree<'a>(items: &'a Vec<TreeItem<'a, usize>>, styles: &Styles) -> Tree<'a, usize> {
     Tree::new(items)
+        .expect("failed to create a tree with items in draw_tree")
         .block(Block::default().borders(Borders::ALL).title("Files"))
-        .highlight_style(
-            styles.details_highlight
-        )
-        //.highlight_symbol(">> ")
+        .highlight_style(styles.details_highlight)
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {

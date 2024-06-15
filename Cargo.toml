@@ -8,13 +8,11 @@ edition = "2021"
 lto = true
 
 [dependencies]
-crossterm = { version = "0.24", features = [ "serde" ] }
 serde = {version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "0.5"
 chrono = { version = "0.4", features = ["serde"] }
 rand = { version = "0.8.5", default-features = false, features = ["std", "std_rng"] }
-tui = { version = "0.18", default-features = false, features = ['crossterm', 'serde'] }
 thiserror = "1.0"
 reqwest = { version = "0.11.10", features = ["json"] }
 lazy_static = "1.4.0"
@@ -28,5 +26,8 @@ bit-vec = "0.6.3"
 #procfs = "0.13.0"
 tokio = { version = "1.18.0", features = [ "full" ]}
 binary-heap-plus = "0.4.1"
-tui-tree-widget = "0.9.0"
+tui-tree-widget = "0.20.0"
 terminal-light = "1.0.0"
+color-to-tui = "0.3.0"
+ratatui = "0.26.3"
+crossterm = "0.27.0"

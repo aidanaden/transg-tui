@@ -1,40 +1,40 @@
 use home::home_dir;
+use ratatui::style::{Color, Modifier, Style};
 use serde::{Deserialize, Serialize};
 use std::fs::{create_dir_all, write, File};
 use std::io::BufReader;
-use tui::style::{Color, Style, Modifier};
 
 pub struct Styles {
-  pub text: Style,
-  pub bold: Style,
-  pub highlight: Style,
-  pub emphasis: Style,
-  pub emphasis_underline: Style,
-  pub details_highlight: Style,
-  pub details_emphasis: Style,
-  pub details_emphasis_underline: Style,
-  pub error_text: Style,
-  pub blend_in: Style
+    pub text: Style,
+    pub bold: Style,
+    pub highlight: Style,
+    pub emphasis: Style,
+    pub emphasis_underline: Style,
+    pub details_highlight: Style,
+    pub details_emphasis: Style,
+    pub details_emphasis_underline: Style,
+    pub error_text: Style,
+    pub blend_in: Style,
 }
-
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ColorScheme {
+    #[serde(with = "color_to_tui")]
     pub text: Color,
-    #[serde(rename = "highlight")]
+    #[serde(rename = "highlight", with = "color_to_tui")]
     pub highlight: Color,
-    #[serde(rename = "highlight-text")]
+    #[serde(rename = "highlight-text", with = "color_to_tui")]
     pub highlight_text: Color,
-    #[serde(rename = "text-soft")]
+    #[serde(rename = "text-soft", with = "color_to_tui")]
     pub text_soft: Color,
-    #[serde(rename = "text-error")]
-    pub text_error: Color
+    #[serde(rename = "text-error", with = "color_to_tui")]
+    pub text_error: Color,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Colors {
-   pub main: ColorScheme,
-   pub details: ColorScheme
+    pub main: ColorScheme,
+    pub details: ColorScheme,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -56,7 +56,9 @@ pub struct DirMapping {
     pub local_path: String,
 }
 
-fn truth() -> bool { true }
+fn truth() -> bool {
+    true
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Connection {
@@ -115,7 +117,7 @@ pub struct Config {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub file_actions: Vec<Action>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub colors: Option<Colors>
+    pub colors: Option<Colors>,
 }
 
 fn empty_config() -> Config {
@@ -133,7 +135,7 @@ fn empty_config() -> Config {
         actions: vec![],
         file_actions: vec![],
         traffic_monitor: TrafficMonitorOptions::Upload,
-        colors: None
+        colors: None,
     }
 }
 pub fn get_or_create_config() -> Result<Config, Box<dyn std::error::Error>> {
@@ -169,49 +171,63 @@ pub fn get_or_create_config() -> Result<Config, Box<dyn std::error::Error>> {
 
 pub fn compute_styles(config: &Config) -> Styles {
     let colors = config.colors.as_ref().unwrap_or_else(|| {
-        let should_use_light_skin = terminal_light::luma()
-        .map_or(false, |luma| luma > 0.6);
+        let should_use_light_skin = terminal_light::luma().map_or(false, |luma| luma > 0.6);
         if should_use_light_skin {
             &Colors {
-               main: ColorScheme {
-                text: Color::Black,
-                highlight: Color::Cyan,
-                highlight_text: Color::Gray,
-                text_soft: Color::DarkGray,
-                text_error: Color::Red
-            },
-               details: ColorScheme { 
-                   text: Color::Black, 
-                   highlight: Color::Magenta, 
-                   highlight_text: Color::Gray, 
-                   text_soft: Color::DarkGray, 
-                   text_error: Color::Red }
+                main: ColorScheme {
+                    text: Color::Black,
+                    highlight: Color::Cyan,
+                    highlight_text: Color::Gray,
+                    text_soft: Color::DarkGray,
+                    text_error: Color::Red,
+                },
+                details: ColorScheme {
+                    text: Color::Black,
+                    highlight: Color::Magenta,
+                    highlight_text: Color::Gray,
+                    text_soft: Color::DarkGray,
+                    text_error: Color::Red,
+                },
             }
         } else {
-            &Colors { 
+            &Colors {
                 main: ColorScheme {
-                text: Color::White,
-                highlight: Color::Yellow,
-                highlight_text: Color::Black,
-                text_soft: Color::Gray,
-                text_error: Color::Red
-            }, 
-            details: ColorScheme { text: Color::White, highlight: Color::LightBlue, highlight_text: Color::Gray, text_soft: Color::Gray, text_error: Color::Red }
+                    text: Color::White,
+                    highlight: Color::Yellow,
+                    highlight_text: Color::Black,
+                    text_soft: Color::Gray,
+                    text_error: Color::Red,
+                },
+                details: ColorScheme {
+                    text: Color::White,
+                    highlight: Color::LightBlue,
+                    highlight_text: Color::Gray,
+                    text_soft: Color::Gray,
+                    text_error: Color::Red,
+                },
             }
-
         }
-
     });
-    Styles { 
+    Styles {
         text: Style::default().fg(colors.main.text),
         bold: Style::default().fg(colors.main.text).add_modifier(Modifier::BOLD),
-        highlight: Style::default().bg(colors.main.highlight).fg(colors.main.highlight_text).add_modifier(Modifier::BOLD), 
-        emphasis: Style::default().fg(colors.main.highlight), 
-        emphasis_underline: Style::default().fg(colors.main.highlight).add_modifier(Modifier::UNDERLINED),
-        details_highlight: Style::default().bg(colors.details.highlight).fg(colors.details.highlight_text).add_modifier(Modifier::BOLD), 
+        highlight: Style::default()
+            .bg(colors.main.highlight)
+            .fg(colors.main.highlight_text)
+            .add_modifier(Modifier::BOLD),
+        emphasis: Style::default().fg(colors.main.highlight),
+        emphasis_underline: Style::default()
+            .fg(colors.main.highlight)
+            .add_modifier(Modifier::UNDERLINED),
+        details_highlight: Style::default()
+            .bg(colors.details.highlight)
+            .fg(colors.details.highlight_text)
+            .add_modifier(Modifier::BOLD),
         details_emphasis: Style::default().fg(colors.details.highlight),
-        details_emphasis_underline: Style::default().fg(colors.details.highlight).add_modifier(Modifier::UNDERLINED),
+        details_emphasis_underline: Style::default()
+            .fg(colors.details.highlight)
+            .add_modifier(Modifier::UNDERLINED),
         error_text: Style::default().fg(Color::Red),
-        blend_in: Style::default().fg(colors.main.text_soft)
+        blend_in: Style::default().fg(colors.main.text_soft),
     }
 }

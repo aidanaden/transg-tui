@@ -8,22 +8,23 @@ mod utils;
 
 use binary_heap_plus::BinaryHeap;
 use command_processor::{TorrentCmd, TorrentUpdate};
-use config::{Config, TrafficMonitorOptions, Styles, compute_styles};
+use config::{compute_styles, Config, Styles, TrafficMonitorOptions};
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture, KeyCode},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use std::{collections::HashMap, io};
-use tokio::sync::mpsc::{Receiver, Sender};
-use torrent_stats::{update_torrent_stats, TorrentGroupStats};
-use transmission::{SessionStats, TorrentDetails, TorrentInfo, TorrentStatus};
-use tui::{
+use ratatui::{
     backend::{Backend, CrosstermBackend},
     widgets::{ListState, TableState},
     Terminal,
 };
-use tui_tree_widget::{flatten, get_identifier_without_leaf, TreeItem, TreeState};
+use std::{collections::HashMap, io};
+use tokio::sync::mpsc::{Receiver, Sender};
+use torrent_stats::{update_torrent_stats, TorrentGroupStats};
+
+use transmission::{SessionStats, TorrentDetails, TorrentInfo, TorrentStatus};
+use tui_tree_widget::{TreeItem, TreeState};
 use utils::{build_file_tree, build_file_tree_index, find_file_position, process_folder, FileIdx};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -122,15 +123,15 @@ pub struct App<'a> {
     pub upload_data: Vec<u64>,
     pub num_active: usize,
     pub input: String,
-    pub tree_state: TreeState,
+    pub tree_state: TreeState<usize>,
     pub details: Option<TorrentDetails>,
-    pub tree_items: Vec<TreeItem<'a>>,
+    pub tree_items: Vec<TreeItem<'a, usize>>,
     pub tree_index: Vec<FileIdx>,
     pub config: Config,
     pub err: Option<(String, String)>,
     pub sort_func: SortFunction,
     pub connection_idx: usize,
-    pub styles: Styles
+    pub styles: Styles,
 }
 
 impl App<'_> {
@@ -195,7 +196,7 @@ impl App<'_> {
                 func: by_date_added,
             },
             connection_idx: 0,
-            styles
+            styles,
         }
     }
 }
@@ -731,18 +732,39 @@ fn run_app<B: Backend>(
                         Transition::Files => match event.code {
                             KeyCode::Esc | KeyCode::Char('d') => app.transition = Transition::MainScreen,
                             KeyCode::Left | KeyCode::Char('h') => {
-                                let selected = app.tree_state.selected();
-                                if !app.tree_state.close(&selected) {
-                                    let (head, _) = get_identifier_without_leaf(&selected);
-                                    app.tree_state.select(head);
+                                let state = &mut app.tree_state;
+                                let selected = &mut state.selected().to_vec();
+                                state.close(selected);
+
+                                // remove closed node from tree state if confirmed already closed
+                                if !state.close(&selected) {
+                                    selected.pop();
+                                    // let (head, _) = app.tree_state.
+                                    app.tree_state.select(selected.to_vec());
                                 }
                             }
+                            // KeyCode::Left | KeyCode::Char('h') => {
+                            //     let selected = app.tree_state.selected();
+                            //     let done = app.tree_state.close(&selected)
+                            //
+                            //     if !app.tree_state.close(&selected) {
+                            //         let (head, _) = get_identifier_without_leaf(&selected);
+                            //         app.tree_state.select(head);
+                            //     }
+                            // }
                             KeyCode::Right | KeyCode::Char('l') => {
-                                app.tree_state.open(app.tree_state.selected());
+                                let selected = app.tree_state.selected();
+                                app.tree_state.open(selected.to_vec());
                             }
-                            KeyCode::Enter => app.tree_state.toggle(),
-                            KeyCode::Down | KeyCode::Char('j') => move_up_down(&mut app, true),
-                            KeyCode::Up | KeyCode::Char('k') => move_up_down(&mut app, false),
+                            KeyCode::Enter => {
+                                app.tree_state.toggle_selected();
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                move_up_down(&mut app, true);
+                            }
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                move_up_down(&mut app, false);
+                            }
                             KeyCode::Char(' ') => {
                                 app.transition = Transition::FileAction;
                             }
@@ -810,14 +832,18 @@ fn run_app<B: Backend>(
                             KeyCode::Char(c) => {
                                 if let Some(details) = &app.details {
                                     if let Some(file_idx) =
-                                        find_file_position(&app.tree_state.selected(), &app.tree_index) {
-                                        if let Some(_file) = app.tree_state.selected().first().and_then(|x| details.files.get(*x)) {
+                                        find_file_position(&app.tree_state.selected(), &app.tree_index)
+                                    {
+                                        if let Some(_file) =
+                                            app.tree_state.selected().first().and_then(|x| details.files.get(*x))
+                                        {
                                             if let Some(idx) = app
                                                 .config
                                                 .file_actions
                                                 .iter()
                                                 .enumerate()
-                                                .find(|x| x.1.shortcut.starts_with(c)) {
+                                                .find(|x| x.1.shortcut.starts_with(c))
+                                            {
                                                 sender
                                                     .blocking_send(TorrentCmd::FileAction(details.id, idx.0, file_idx))
                                                     .expect("should send");
@@ -985,26 +1011,26 @@ fn select_first_torrent(app: &mut App, sender: Sender<TorrentCmd>) {
 }
 
 fn open_first_level(app: &mut App) {
-    let visible = flatten(&app.tree_state.get_all_opened(), &app.tree_items);
+    let visible = app.tree_state.flatten(&app.tree_items);
     for x in visible {
         app.tree_state.open(x.identifier);
     }
 }
 
 fn move_up_down(app: &mut App, down: bool) {
-    let visible = flatten(&app.tree_state.get_all_opened(), &app.tree_items);
+    let visible = TreeState::flatten(&app.tree_state, &app.tree_items);
     if !visible.is_empty() {
         let current_identifier = app.tree_state.selected();
-        let current_index = visible.iter().position(|o| o.identifier == current_identifier);
-        let new_index = current_index.map_or(0, |current_index| {
+        let current_idx = visible.iter().position(|o| o.identifier == current_identifier);
+        let new_idx = current_idx.map_or(0, |current_idx| {
             if down {
-                current_index.saturating_add(1)
+                current_idx.saturating_add(1)
             } else {
-                current_index.saturating_sub(1)
+                current_idx.saturating_sub(1)
             }
             .min(visible.len() - 1)
         });
-        let new_identifier = visible.get(new_index).unwrap().identifier.clone();
+        let new_identifier = visible.get(new_idx).unwrap().identifier.clone();
         app.tree_state.select(new_identifier);
     }
 }
