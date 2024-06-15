@@ -52,7 +52,7 @@ pub enum TorrentCmd {
     AddTorrent(Option<String>, Option<String>, Option<String>, bool), // download dir, filename, metainfo, start_paused
     //PoisonPill,
     Reconnect(usize),
-    FileAction(u64, usize, usize)
+    FileAction(u64, usize, usize),
 }
 
 lazy_static! {
@@ -267,7 +267,7 @@ async fn update_step(
 
             let free_space = if i % 60 == 0 {
                 let free_space = client.get_free_space(&connection.download_dir).await?;
-                    Some(free_space.arguments)
+                Some(free_space.arguments)
             } else {
                 None
             };
@@ -419,5 +419,3 @@ async fn update_step(
     };
     Ok(())
 }
-
-
