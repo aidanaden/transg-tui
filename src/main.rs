@@ -743,15 +743,6 @@ fn run_app<B: Backend>(
                                     app.tree_state.select(selected.to_vec());
                                 }
                             }
-                            // KeyCode::Left | KeyCode::Char('h') => {
-                            //     let selected = app.tree_state.selected();
-                            //     let done = app.tree_state.close(&selected)
-                            //
-                            //     if !app.tree_state.close(&selected) {
-                            //         let (head, _) = get_identifier_without_leaf(&selected);
-                            //         app.tree_state.select(head);
-                            //     }
-                            // }
                             KeyCode::Right | KeyCode::Char('l') => {
                                 let selected = app.tree_state.selected();
                                 app.tree_state.open(selected.to_vec());
