@@ -66,7 +66,9 @@ impl TorrentInfo {
     pub fn from_json(json: &Value) -> Result<Self> {
         let xs = json.as_array().unwrap();
         if xs.len() < 20 {
-            Err(Box::new(HttpError::new("get torrents response contains invalid number of fields")))
+            Err(Box::new(HttpError::new(
+                "get torrents response contains invalid number of fields",
+            )))
         } else {
             Ok(TorrentInfo {
                 id: xs[0].as_i64().unwrap(),
@@ -702,7 +704,9 @@ impl TransmissionClient {
                     .send()
                     .await?
             }
-            reqwest::StatusCode::FORBIDDEN => return Err(Box::new(HttpError::new("Forbidden. Check your priviledge."))),
+            reqwest::StatusCode::FORBIDDEN => {
+                return Err(Box::new(HttpError::new("Forbidden. Check your priviledge.")))
+            }
             reqwest::StatusCode::UNAUTHORIZED => {
                 return Err(Box::new(HttpError::new(
                     "Unauthorized. Please, provide valid username and password.",
@@ -711,12 +715,12 @@ impl TransmissionClient {
             x if x.is_success() => response,
             other => return Err(Box::new(HttpError::new(&format!("Code: {}", other)))),
         };
-        let json : Value = response.json().await?;
+        let json: Value = response.json().await?;
         let res = json
             .get("result")
             .cloned()
             .unwrap_or_else(|| Value::String(String::from("field result is missing")));
-        let res =  res.as_str().unwrap_or( "field result has incompatible type");
+        let res = res.as_str().unwrap_or("field result has incompatible type");
         if res == "success" {
             //serde_json::from_value::<R>(json).map_err(From::from)
             serde_json::from_value::<R>(json).map_err(|x| {
@@ -725,10 +729,10 @@ impl TransmissionClient {
                 //use std::io::Write;
                 //let mut file = File::create("out.json").unwrap();
 
-    // Write a &str in the file (ignoring the result).
-    //writeln!(&mut file, "{:#}", json).unwrap();
-               // println!("{:#}", json);
-              //  panic!("boo")
+                // Write a &str in the file (ignoring the result).
+                //writeln!(&mut file, "{:#}", json).unwrap();
+                // println!("{:#}", json);
+                //  panic!("boo")
                 From::from(x)
             })
         } else {
